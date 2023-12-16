@@ -15,6 +15,7 @@
 using namespace tinyxml2;
 using namespace std;
 
+//Transformation helper functions
 Matrix4 translationMatrix(double tx, double ty, double tz)
 {
 	Matrix4 translationMatrix = getIdentityMatrix();
