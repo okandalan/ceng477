@@ -175,6 +175,15 @@ Matrix4 viewportMatrix(int nx, int ny, double xmin = 0, double ymin = 0)
 }
 
 //Rasterization functions
+Color roundColor(Color c)
+{
+	c.r = round(c.r);
+	c.g = round(c.g);
+	c.b = round(c.b);
+	
+	return c; 
+}
+
 void lineRasterization(int x0, int y0, Color c0, int x1, int y1, Color c1, Scene * s)
 {
 	int x_inc;
@@ -196,7 +205,7 @@ void lineRasterization(int x0, int y0, Color c0, int x1, int y1, Color c1, Scene
 
 	if ((y0 == y1) || (abs((double(y1 - y0)) / (x1 - x0)) <= 1)) {
 		d = x_inc * (y0 - y1) + y_inc * 0.5 * (x1 - x0);
-		s->assignColorToPixel(x0, y0, c0);
+		s->assignColorToPixel(x0, y0, roundColor(c0));
 		for (; x_index != x1; x_index += x_inc) {
 			if (d < 0) {
 				y_index += y_inc;
@@ -209,13 +218,13 @@ void lineRasterization(int x0, int y0, Color c0, int x1, int y1, Color c1, Scene
 			tmp_c.r = (1 - alpha) * c0.r + alpha * c1.r; 
 			tmp_c.g = (1 - alpha) * c0.g + alpha * c1.g; 
 			tmp_c.b = (1 - alpha) * c0.b + alpha * c1.b;
-			s->assignColorToPixel(x_index, y_index, tmp_c);
+			s->assignColorToPixel(x_index, y_index, roundColor(tmp_c));
 		}
 	}
 
 	if ((x0 == x1) || (abs((double(y1 - y0)) / (x1 - x0)) > 1)) {
 		d = x_inc * 0.5 * (y0 - y1) + y_inc * (x1 - x0);
-		s->assignColorToPixel(x0, y0, c0);
+		s->assignColorToPixel(x0, y0, roundColor(c0));
 		for (; y_index != y1; y_index += y_inc) {
 			if (d < 0) {
 				x_index += x_inc;
@@ -228,11 +237,12 @@ void lineRasterization(int x0, int y0, Color c0, int x1, int y1, Color c1, Scene
 			tmp_c.r = (1 - alpha) * c0.r + alpha * c1.r; 
 			tmp_c.g = (1 - alpha) * c0.g + alpha * c1.g; 
 			tmp_c.b = (1 - alpha) * c0.b + alpha * c1.b;
-			s->assignColorToPixel(x_index, y_index, tmp_c);
+			s->assignColorToPixel(x_index, y_index, roundColor(tmp_c));
 		}
 	}
 
 }
+
 /*
 	Parses XML file
 */
