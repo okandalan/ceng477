@@ -4,6 +4,7 @@
 #define SOLID_MESH 1
 #include "Triangle.h"
 #include "Vec4.h"
+#include "Line.h"
 
 
 class Mesh
@@ -16,6 +17,7 @@ public:
     std::vector<Triangle> triangles;
 
     std::vector<Vec4> transformedVertices;
+    std::vector<Line> lines;
 
     Mesh();
     Mesh(int meshId, int type, int numberOfTransformations,

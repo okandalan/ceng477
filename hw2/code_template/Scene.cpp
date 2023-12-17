@@ -11,6 +11,7 @@
 #include "Triangle.h"
 #include "Helpers.h"
 #include "Scene.h"
+#include "Line.h"
 
 using namespace tinyxml2;
 using namespace std;
@@ -335,6 +336,83 @@ bool isBack(Vec3 v1, Vec3 v2, Vec3 v3, Vec3 camera)
 	return dotProductVec3(normal, ray) > 0;
 }
 
+bool visible(double den, double num, double& te, double& tl)
+{
+	double t;
+	if (den > 0) {
+		t = num / den;
+		if (t > tl) {
+			return false;
+		}
+		if (t > te) {
+			te = t;
+		}
+	}
+	else if (den < 0) {
+		t = num / den;
+		if (t < te) {
+			return false;
+		}
+		if (t < tl) {
+			tl = t;
+		}
+	}
+	else if (num > 0) {
+		return false;
+	} 
+	return true;
+}
+
+void lineClipping(Line& l, Scene * s)
+{
+	Vec4 initialV0 = l.v0;
+	Vec4 initialV1 = l.v1;
+	double xMin = -1;
+	double xMax = 1;
+	double yMin = -1;
+	double yMax = 1;
+	double zMin = -1;
+	double zMax = 1;
+	double te = 0.;
+	double tl = 1.;
+	double dx = l.v1.x - l.v0.x;
+	double dy = l.v1.y - l.v0.y;
+	double dz = l.v1.z - l.v0.z;
+	if (visible(dx, xMin - l.v0.x, te, tl) &&
+	    visible(-dx, l.v0.x - xMax, te, tl) &&
+		visible(dy, yMin - l.v0.y, te, tl) &&
+		visible(-dy, l.v0.y - yMax, te, tl) &&
+		visible(dz, zMin - l.v0.z, te, tl) &&
+		visible(-dz, l.v0.z - zMax, te, tl)) {
+			l.visible = true;
+			if (tl < 1) {
+				l.v1.x = l.v0.x + (dx * tl);
+				l.v1.y = l.v0.y + (dy * tl);
+				l.v1.z = l.v0.z + (dz * tl);
+			}
+			if (te > 0) {
+				l.v0.x = l.v0.x + (dx * tl);
+				l.v0.y = l.v0.y + (dy * tl);
+				l.v0.z = l.v0.z + (dz * tl);
+			}
+	}
+
+	double distanceV0ToV1 = sqrt(pow(dx, 2) + pow(dy, 2) + pow(dz, 2));
+	double distanceV0ToNewV1 = sqrt(pow(l.v1.x - initialV0.x, 2) + pow(l.v1.y - initialV0.y, 2) + pow(l.v1.z - initialV0.z, 2));
+	double distanceV0ToNewV0 = sqrt(pow(l.v0.x - initialV0.x, 2) + pow(l.v0.y - initialV0.y, 2) + pow(l.v0.z - initialV0.z, 2));;
+	double alpha0 = distanceV0ToNewV0 / distanceV0ToV1;
+	double alpha1 = distanceV0ToNewV1 / distanceV0ToV1;
+	Color *c0 = s->colorsOfVertices[l.v0.colorId - 1];
+	Color *c1 = s->colorsOfVertices[l.v1.colorId - 1];
+
+	l.colorV0.r = (1 - alpha0) * c0->r + alpha0 * c1->r;
+	l.colorV0.g = (1 - alpha0) * c0->g + alpha0 * c1->g;
+	l.colorV0.b = (1 - alpha0) * c0->b + alpha0 * c1->b;
+
+	l.colorV1.r = (1 - alpha1) * c0->r + alpha1 * c1->r;
+	l.colorV1.g = (1 - alpha1) * c0->g + alpha1 * c1->g;
+	l.colorV1.b = (1 - alpha1) * c0->b + alpha1 * c1->b;
+}
 
 /*
 	Parses XML file
@@ -749,6 +827,69 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 				// Add the transformed vertex to the std::vector of the mesh
 				mesh->transformedVertices.push_back(transformedVertex);
 			}
+
+
+		}
+
+		// There are no modeling transformations specified for this mesh, simply deep-copy the original vertices in the scene
+		else {
+
+			// Deep-copy every vertex in the scene into the std::vector of the mesh
+			for (int j = 0; j < this->vertices.size(); j++) {
+
+				Vec3 *originalVertex = this->vertices[j];
+				Vec4 homogeneousVertex;
+
+				homogeneousVertex.x = originalVertex->x;
+				homogeneousVertex.y = originalVertex->y;
+				homogeneousVertex.z = originalVertex->z;
+				homogeneousVertex.t = 1.0;
+				homogeneousVertex.colorId = originalVertex->colorId;
+
+				// Add the vertex with homogeneous coordinates into the std::vector of the mesh
+				mesh->transformedVertices.push_back(homogeneousVertex);
+			}
+		}
+
+		// MODELING TRANSFORMATIONS ARE DONE, MOVING ONTO THE VIEWING TRANSFORMATIONS
+
+		// Apply camera transformation and projection transformation to each transformed vertex of the mesh
+		for (int j = 0; j < mesh->transformedVertices.size(); j++) {
+
+			Vec4 viewTransformedVertex = multiplyMatrixWithVec4(viewingTransformMatrix, mesh->transformedVertices[j]);
+
+			mesh->transformedVertices[j].x = viewTransformedVertex.x;
+			mesh->transformedVertices[j].y = viewTransformedVertex.y;
+			mesh->transformedVertices[j].z = viewTransformedVertex.z;
+			mesh->transformedVertices[j].t = viewTransformedVertex.t;
+		}
+
+		// VIEWING TRANSFORMATIONS ARE DONE, MOVING ONTO PRIMITIVE (LINE) ASSEMBLY
+
+		// type == 0 (wireframe mode), compute the edges from the given triangles and store them in a vector inside the mesh, for clipping purposes
+		if (!mesh->type) {
+
+			// For each triangle of the mesh, add 3 constituent edges to the lines vector of the mesh
+			for (int j = 0; j < mesh->triangles.size(); j++) {
+
+				Triangle triangle = mesh->triangles[j];
+				Vec4 a = mesh->transformedVertices[triangle.vertexIds[0] - 1];
+				Vec4 b = mesh->transformedVertices[triangle.vertexIds[1] - 1];
+				Vec4 c = mesh->transformedVertices[triangle.vertexIds[2] - 1];
+
+				Line line1(a, b);
+				Line line2(b, c);
+				Line line3(c, a);
+
+				mesh->lines.push_back(line1);
+				mesh->lines.push_back(line2);
+				mesh->lines.push_back(line3);
+			}
+		}
+
+		// type == 1 (solid mode), DO NOT PERFORM CLIPPING
+		else {
+
 		}
 	}
 }
