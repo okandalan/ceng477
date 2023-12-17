@@ -191,7 +191,7 @@ Color roundColor(Color c)
 	return c; 
 }
 
-void lineRasterization(int x0, int y0, int z0, Color c0, int x1, int y1, int z1, Color c1, double ** depth_buffer,  Scene * s)
+void lineRasterization(int x0, int y0, int z0, Color c0, int x1, int y1, int z1, Color c1, double ** depth_buffer,  Scene * s, Camera* c)
 {
 	int x_inc = 0;
 	int y_inc = 0;
@@ -216,7 +216,7 @@ void lineRasterization(int x0, int y0, int z0, Color c0, int x1, int y1, int z1,
 		for (; x_index != x1 + x_inc; x_index += x_inc) {
 			alpha = double(x_index - x0) / (x1 - x0);
 			depth = (1 - alpha) * z0 + alpha * z1;
-			if (depth < depth_buffer[x_index][y_index]) {
+			if (depth < depth_buffer[x_index][y_index] && x_index < c->horRes && y_index < c->verRes) {
 				tmp_c.r = (1 - alpha) * c0.r + alpha * c1.r; 
 				tmp_c.g = (1 - alpha) * c0.g + alpha * c1.g; 
 				tmp_c.b = (1 - alpha) * c0.b + alpha * c1.b;
@@ -238,7 +238,7 @@ void lineRasterization(int x0, int y0, int z0, Color c0, int x1, int y1, int z1,
 		for (; y_index != y1 + y_inc; y_index += y_inc) {
 			alpha = double(y_index - y0) / (y1 - y0);
 			depth = (1 - alpha) * z0 + alpha * z1;
-			if (depth < depth_buffer[x_index][y_index]) {
+			if (depth < depth_buffer[x_index][y_index] && x_index < c->horRes && y_index < c->verRes) {
 				tmp_c.r = (1 - alpha) * c0.r + alpha * c1.r; 
 				tmp_c.g = (1 - alpha) * c0.g + alpha * c1.g; 
 				tmp_c.b = (1 - alpha) * c0.b + alpha * c1.b;
@@ -257,7 +257,7 @@ void lineRasterization(int x0, int y0, int z0, Color c0, int x1, int y1, int z1,
 
 }
 
-void triangleRasterization(int x0, int y0, int z0, Color c0, int x1, int y1, int z1, Color c1, int x2, int y2, int z2, Color c2, double ** depth_buffer, Scene * s)
+void triangleRasterization(int x0, int y0, int z0, Color c0, int x1, int y1, int z1, Color c1, int x2, int y2, int z2, Color c2, double ** depth_buffer, Scene * s, Camera * c)
 {
 	int x_min, x_max, y_min, y_max;
 	if (x0 <= x1 && x0 <= x2) {
@@ -270,10 +270,10 @@ void triangleRasterization(int x0, int y0, int z0, Color c0, int x1, int y1, int
 		x_min = x2;
 	}
 
-	if (x0 > x1 && x0 > x2) {
+	if (x0 >= x1 && x0 >= x2) {
 		x_max = x0;
 	}
-	else if (x1 > x0 && x1 > x2) {
+	else if (x1 >= x0 && x1 >= x2) {
 		x_max = x1;
 	}
 	else {
@@ -290,10 +290,10 @@ void triangleRasterization(int x0, int y0, int z0, Color c0, int x1, int y1, int
 		y_min = y2;
 	}
 
-	if (y0 > y1 && y0 > y2) {
+	if (y0 >= y1 && y0 >= y2) {
 		y_max = y0;
 	}
-	else if (y1 > y0 && y1 > y2) {
+	else if (y1 >= y0 && y1 >= y2) {
 		y_max = y1;
 	}
 	else {
@@ -313,7 +313,7 @@ void triangleRasterization(int x0, int y0, int z0, Color c0, int x1, int y1, int
 			beta = double(lineEquationF(x, y, x2, y2, x0, y0)) / f_2_0;
 			gama = double(lineEquationF(x, y, x0, y0, x1, y1)) / f_0_1;
 			depth = (z0 * alpha) + (z1 * beta) + (z2 * gama);
-			if (alpha >= 0 && beta >= 0 && gama >= 0 && depth < depth_buffer[x][y]) {
+			if (alpha >= 0 && beta >= 0 && gama >= 0 && depth < depth_buffer[x][y] && x < c->horRes && y < c->verRes) {
 				s->assignColorToPixel(x, y, roundColor((c0 * alpha) + (c1 * beta) + (c2 * gama)));
 			}
 		}
