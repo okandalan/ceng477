@@ -29,6 +29,7 @@ Matrix4 translationMatrix(double tx, double ty, double tz)
 Matrix4 transposeMatrix4(Matrix4 m)
 {
 	Matrix4 m_transpose;
+
 	for (int i=0; i++; i < 4){
 		for (int j=0; j++; j < 4){
 			m_transpose.values[j][i] = m.values[i][j];
@@ -39,18 +40,18 @@ Matrix4 transposeMatrix4(Matrix4 m)
 
 Matrix4 rotationMatrix(double angle, double ux, double uy, double uz)
 {
-	Matrix4 identityMatrix = getIdentityMatrix();
-	//TODO hangisini negate ettiğimin bir önemi var mı ? 
 	Vec3 v;
+
 	if (abs(ux) < abs(uy) && abs(ux) < abs(uz)) {
-		v = Vec3(0., -uz, uy);
+		v = Vec3(0.0, -uz, uy);
 	}
 	else if (abs(uy) < abs(ux) && abs(uy) < abs(uz)) {
-		v = Vec3(-uz, 0, ux);
+		v = Vec3(-uz, 0.0, ux);
 	}
-	else if (abs(uz) < abs(ux) && abs(uz) < abs(uz)) {
-		v = Vec3(-uy, ux, 0);
+	else if (abs(uz) < abs(ux) && abs(uz) < abs(uy)) {
+		v = Vec3(-uy, ux, 0.0);
 	}
+
 	Vec3 w = crossProductVec3(Vec3(ux, uy, uz), v);
 
 	v = normalizeVec3(v);
@@ -74,7 +75,7 @@ Matrix4 rotationMatrix(double angle, double ux, double uy, double uz)
 	rotation.values[2][1] = sin(angle);
 	rotation.values[2][2] = cos(angle);
 	
-	return multiplyMatrixWithMatrix(transposeMatrix4(m), multiplyMatrixWithMatrix(m, rotation));	
+	return multiplyMatrixWithMatrix(transposeMatrix4(m), multiplyMatrixWithMatrix(rotation, m));
 }
 
 Matrix4 createScaleMatrix(double x, double y, double z) 
@@ -95,40 +96,47 @@ Matrix4 translateToOriginAndBack(Matrix4 m, double x, double y, double z)
 	return multiplyMatrixWithMatrix(backFromOrigin, multiplyMatrixWithMatrix(m, toOrigin));
 }
 
-Matrix4 cameraMatrix(double cx, double cy, double cz, Vec3 w, Vec3 v)
+Matrix4 cameraMatrix(double cx, double cy, double cz, Vec3 u, Vec3 w, Vec3 v)
 {
+	// Translate the camera to the world origin
 	Matrix4 toOrigin = translationMatrix(-cx, -cy, -cz);
-	
-	//TODO cross producttın yönü doğru mu emin ol
-	Vec3 u = crossProductVec3(v, w);
-	v = crossProductVec3(w, u); // bu işlemden ödev pdf'inde bahsediyor up'ı tekrar bul diyor crossla 3.1.3 cameras kısmında
 
-	u = normalizeVec3(u);
-	v = normalizeVec3(v);
-	w = normalizeVec3(w);
-
+	// Rotate uvw to align it with xyz
 	Matrix4 m;
 	m.values[0][0] = u.x;
 	m.values[0][1] = u.y;
 	m.values[0][2] = u.z;
+	m.values[0][3] = 0.0;
+	
 	m.values[1][0] = v.x;
 	m.values[1][1] = v.y;
 	m.values[1][2] = v.z;
+	m.values[1][3] = 0.0;
+	
 	m.values[2][0] = w.x;
 	m.values[2][1] = w.y;
 	m.values[2][2] = w.z;
+	m.values[2][3] = 0.0;
+
+	m.values[3][0] = 0.0;
+	m.values[3][1] = 0.0;
+	m.values[3][2] = 0.0;
+	m.values[3][3] = 1.0;
 
 	return multiplyMatrixWithMatrix(m, toOrigin);
 }
 
-Matrix4 perspectiveMatrix(double near, double far)
+Matrix4 perspectiveToOrtographicMatrix(double near, double far)
 {
 	Matrix4 m = getIdentityMatrix();
+
 	m.values[0][0] = near;
 	m.values[1][1] = near;
 	m.values[2][2] = far + near;
 	m.values[2][3] = far * near;
 	m.values[3][2] = -1;
+	// Remove the extra 1 that comes from the identity matrix
+	m.values[3][3] = 0;
 	
 	return m;
 }
@@ -139,7 +147,6 @@ Matrix4 orthographicMatrix(double l, double r, double b, double t, double n, dou
 	m.values[0][0] = 2. / (r - l);
 	m.values[1][1] = 2. / (t - b);
 	m.values[2][2] = -2. / (f - n);
-	m.values[3][3] = 1;
 	m.values[0][3] = -(r + l) / (r - l);
 	m.values[1][3] = -(t + b) / (t - b);
 	m.values[2][3] = -(f + n) / (f - n);
@@ -157,6 +164,7 @@ Vec4 perspectiveDivide(Vec4 v)
 	return v;
 }
 
+// Check for bugs
 //TODO normalde ders slaytlarında bu matrix 3x4 çünkü Homogeneous coordinatelara artık ihtiyacımız yok
 // ama ben matrix3 yok diye böyle yaptım bu matrixi kullandıktan sonraki sonuçlarda HC'yi atarız vertexlerden
 //TODO ödevde sanırım bu xmin ymin kısmı yok ama dursun şimdilik
@@ -166,7 +174,6 @@ Matrix4 viewportMatrix(int nx, int ny, double xmin = 0, double ymin = 0)
 	m.values[0][0] = nx / 2.0;
 	m.values[1][1] = ny / 2.0;
 	m.values[2][2] = 1 / 2.0;
-	m.values[3][3] = 1;
 	m.values[0][3] = ((nx - 1) / 2.0) + xmin;
 	m.values[1][3] = ((ny - 1) / 2.0) + ymin;
 	m.values[2][3] = 1 / 2.0;
@@ -580,4 +587,20 @@ void Scene::convertPPMToPNG(string ppmFileName)
 void Scene::forwardRenderingPipeline(Camera *camera)
 {
 	// TODO: Implement this function
+
+	// Traverse over all meshes to compute their own versions of vertices after applying modeling and viewing transformations
+/* 	for (int i = 0; i < camera->meshes.size(); i++) {
+
+		Mesh *mesh = camera->meshes[i];
+		Matrix4 compositeModeling;
+
+		// Calculate the composite modeling transformation matrix for this specific mesh
+		if (mesh->numberOfTransformations > 0) {
+			
+		}
+
+
+
+	}
+ */
 }
