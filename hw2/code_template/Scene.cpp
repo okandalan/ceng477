@@ -42,13 +42,13 @@ Matrix4 rotationMatrix(double angle, double ux, double uy, double uz)
 {
 	Vec3 v;
 
-	if (abs(ux) < abs(uy) && abs(ux) < abs(uz)) {
+	if (abs(ux) <= abs(uy) && abs(ux) <= abs(uz)) {
 		v = Vec3(0.0, -uz, uy);
 	}
-	else if (abs(uy) < abs(ux) && abs(uy) < abs(uz)) {
+	else if (abs(uy) <= abs(ux) && abs(uy) <= abs(uz)) {
 		v = Vec3(-uz, 0.0, ux);
 	}
-	else if (abs(uz) < abs(ux) && abs(uz) < abs(uy)) {
+	else if (abs(uz) <= abs(ux) && abs(uz) <= abs(uy)) {
 		v = Vec3(-uy, ux, 0.0);
 	}
 
@@ -96,7 +96,7 @@ Matrix4 translateToOriginAndBack(Matrix4 m, double x, double y, double z)
 	return multiplyMatrixWithMatrix(backFromOrigin, multiplyMatrixWithMatrix(m, toOrigin));
 }
 
-Matrix4 cameraMatrix(double cx, double cy, double cz, Vec3 u, Vec3 w, Vec3 v)
+Matrix4 cameraMatrix(double cx, double cy, double cz, Vec3 u, Vec3 v, Vec3 w)
 {
 	// Translate the camera to the world origin
 	Matrix4 toOrigin = translationMatrix(-cx, -cy, -cz);
@@ -191,12 +191,13 @@ Color roundColor(Color c)
 	return c; 
 }
 
-void lineRasterization(int x0, int y0, Color c0, int x1, int y1, Color c1, Scene * s)
+void lineRasterization(int x0, int y0, int z0, Color c0, int x1, int y1, int z1, Color c1, double ** depth_buffer,  Scene * s)
 {
-	int x_inc;
-	int y_inc;
+	int x_inc = 0;
+	int y_inc = 0;
 	int x_index = x0;
 	int y_index = y0;
+	double depth = z0;
 	Color tmp_c = c0;
 	double d;
 	double alpha;
@@ -212,8 +213,16 @@ void lineRasterization(int x0, int y0, Color c0, int x1, int y1, Color c1, Scene
 
 	if ((y0 == y1) || (abs((double(y1 - y0)) / (x1 - x0)) <= 1)) {
 		d = x_inc * (y0 - y1) + y_inc * 0.5 * (x1 - x0);
-		s->assignColorToPixel(x0, y0, roundColor(c0));
-		for (; x_index != x1; x_index += x_inc) {
+		for (; x_index != x1 + x_inc; x_index += x_inc) {
+			alpha = double(x_index - x0) / (x1 - x0);
+			depth = (1 - alpha) * z0 + alpha * z1;
+			if (depth < depth_buffer[x_index][y_index]) {
+				tmp_c.r = (1 - alpha) * c0.r + alpha * c1.r; 
+				tmp_c.g = (1 - alpha) * c0.g + alpha * c1.g; 
+				tmp_c.b = (1 - alpha) * c0.b + alpha * c1.b;
+				s->assignColorToPixel(x_index, y_index, roundColor(tmp_c));
+			}
+
 			if (d < 0) {
 				y_index += y_inc;
 				d += x_inc * (y0 - y1) + y_inc * (x1 - x0);
@@ -221,18 +230,21 @@ void lineRasterization(int x0, int y0, Color c0, int x1, int y1, Color c1, Scene
 			else {
 				d += x_inc * (y0 - y1);
 			}
-			alpha = double(x_index - x0) / (x1 - x0);
-			tmp_c.r = (1 - alpha) * c0.r + alpha * c1.r; 
-			tmp_c.g = (1 - alpha) * c0.g + alpha * c1.g; 
-			tmp_c.b = (1 - alpha) * c0.b + alpha * c1.b;
-			s->assignColorToPixel(x_index, y_index, roundColor(tmp_c));
 		}
 	}
 
 	if ((x0 == x1) || (abs((double(y1 - y0)) / (x1 - x0)) > 1)) {
 		d = x_inc * 0.5 * (y0 - y1) + y_inc * (x1 - x0);
-		s->assignColorToPixel(x0, y0, roundColor(c0));
-		for (; y_index != y1; y_index += y_inc) {
+		for (; y_index != y1 + y_inc; y_index += y_inc) {
+			alpha = double(y_index - y0) / (y1 - y0);
+			depth = (1 - alpha) * z0 + alpha * z1;
+			if (depth < depth_buffer[x_index][y_index]) {
+				tmp_c.r = (1 - alpha) * c0.r + alpha * c1.r; 
+				tmp_c.g = (1 - alpha) * c0.g + alpha * c1.g; 
+				tmp_c.b = (1 - alpha) * c0.b + alpha * c1.b;
+				s->assignColorToPixel(x_index, y_index, roundColor(tmp_c));
+			}
+
 			if (d < 0) {
 				x_index += x_inc;
 				d += x_inc * (y0 - y1) + y_inc * (x1 - x0);
@@ -240,15 +252,89 @@ void lineRasterization(int x0, int y0, Color c0, int x1, int y1, Color c1, Scene
 			else {
 				d += y_inc * (x1 - x0);
 			}
-			alpha = double(y_index - y0) / (y1 - y0);
-			tmp_c.r = (1 - alpha) * c0.r + alpha * c1.r; 
-			tmp_c.g = (1 - alpha) * c0.g + alpha * c1.g; 
-			tmp_c.b = (1 - alpha) * c0.b + alpha * c1.b;
-			s->assignColorToPixel(x_index, y_index, roundColor(tmp_c));
 		}
 	}
 
 }
+
+void triangleRasterization(int x0, int y0, int z0, Color c0, int x1, int y1, int z1, Color c1, int x2, int y2, int z2, Color c2, double ** depth_buffer, Scene * s)
+{
+	int x_min, x_max, y_min, y_max;
+	if (x0 <= x1 && x0 <= x2) {
+		x_min = x0;
+	}
+	else if (x1 <= x0 && x1 <= x2) {
+		x_min = x1;
+	}
+	else {
+		x_min = x2;
+	}
+
+	if (x0 > x1 && x0 > x2) {
+		x_max = x0;
+	}
+	else if (x1 > x0 && x1 > x2) {
+		x_max = x1;
+	}
+	else {
+		x_max = x2;
+	}
+	
+	if (y0 <= y1 && y0 <= y2) {
+		y_min = y0;
+	}
+	else if (y1 <= y0 && y1 <= y2) {
+		y_min = y1;
+	}
+	else {
+		y_min = y2;
+	}
+
+	if (y0 > y1 && y0 > y2) {
+		y_max = y0;
+	}
+	else if (y1 > y0 && y1 > y2) {
+		y_max = y1;
+	}
+	else {
+		y_max = y2;
+	}
+
+	int f_0_1 = lineEquationF(x2, y2, x0, y0, x1, y1); 
+	int f_1_2 = lineEquationF(x0, y0, x1, y1, x2, y2); 
+	int f_2_0 = lineEquationF(x1, y1, x2, y2, x0, y0);
+	double alpha;
+	double beta;
+	double gama;
+	double depth;
+	for(int y = y_min; y <= y_max; y++) {
+		for (int x = x_min; x <= x_max; x++) {
+			alpha = double(lineEquationF(x, y, x1, y1, x2, y2)) / f_1_2;
+			beta = double(lineEquationF(x, y, x2, y2, x0, y0)) / f_2_0;
+			gama = double(lineEquationF(x, y, x0, y0, x1, y1)) / f_0_1;
+			depth = (z0 * alpha) + (z1 * beta) + (z2 * gama);
+			if (alpha >= 0 && beta >= 0 && gama >= 0 && depth < depth_buffer[x][y]) {
+				s->assignColorToPixel(x, y, roundColor((c0 * alpha) + (c1 * beta) + (c2 * gama)));
+			}
+		}
+
+	}
+
+}
+
+bool isBack(Vec3 v1, Vec3 v2, Vec3 v3, Vec3 camera)
+{
+	Vec3 v1_to_v2 = v2 - v1;
+	Vec3 v1_to_v3 = v3 - v1;
+	Vec3 normal = crossProductVec3(v1_to_v2, v1_to_v3);
+	normal = normalizeVec3(normal);
+
+	Vec3 ray = normalizeVec3(v1 - camera);
+
+	//TODO belki >= olması gerekebilir
+	return dotProductVec3(normal, ray) > 0;
+}
+
 
 /*
 	Parses XML file
@@ -588,19 +674,82 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 {
 	// TODO: Implement this function
 
-	// Traverse over all meshes to compute their own versions of vertices after applying modeling and viewing transformations
-/* 	for (int i = 0; i < camera->meshes.size(); i++) {
+	// The same viewing transformation matrix will be used for all meshes, so compute it once
+	Matrix4 viewingTransformMatrix;
 
-		Mesh *mesh = camera->meshes[i];
-		Matrix4 compositeModeling;
+	// projectionType == 1, apply perspective projection
+	if (camera->projectionType) {
+
+		viewingTransformMatrix = multiplyMatrixWithMatrix(orthographicMatrix(camera->left, camera->right, camera->bottom, camera->top, camera->near, camera->far), 
+														multiplyMatrixWithMatrix(perspectiveToOrtographicMatrix(camera->near, camera->far), cameraMatrix(camera->position.x, camera->position.y, camera->position.z, camera->u, camera->v, camera->w)));
+	}
+
+	// projectionType == 0, apply orthographic projection
+	else {
+		
+		viewingTransformMatrix = multiplyMatrixWithMatrix(orthographicMatrix(camera->left, camera->right, camera->bottom, camera->top, camera->near, camera->far), 
+															  cameraMatrix(camera->position.x, camera->position.y, camera->position.z, camera->u, camera->v, camera->w));
+	}
+
+	// Traverse over all meshes to compute their own versions of vertices after applying modeling and viewing transformations
+	for (int i = 0; i < this->meshes.size(); i++) {
+
+		Mesh *mesh = this->meshes[i];
 
 		// Calculate the composite modeling transformation matrix for this specific mesh
 		if (mesh->numberOfTransformations > 0) {
-			
+
+			Matrix4 compositeModeling = getIdentityMatrix();
+
+			// For each modeling transformation, multiply the previously obtained matrix from the right with the corresponding matrix of the transformation
+			for (int j = mesh->numberOfTransformations - 1; j >= 0; j--) {
+
+				int transformationId = mesh->transformationIds[j];
+				char transformationType = mesh->transformationTypes[j];
+
+				switch (transformationType) {
+					case 't':
+						Translation *translation = this->translations[transformationId - 1];
+
+						// Multiply the previous composite matrix with the translation matrix in order to find the new composite matrix
+						compositeModeling = multiplyMatrixWithMatrix(compositeModeling, translationMatrix(translation->tx, translation->ty, translation->tz));
+						break;
+
+					case 's':
+						Scaling *scaling = this->scalings[transformationId - 1];
+
+						// Multiply the previous composite matrix with the scaling matrix in order to find the new composite matrix
+						compositeModeling = multiplyMatrixWithMatrix(compositeModeling, createScaleMatrix(scaling->sx, scaling->sy, scaling->sz));
+						break;
+
+					case 'r':
+						Rotation *rotation = this->rotations[transformationId - 1];
+
+						// Multiply the previous composite matrix with the rotation matrix in order to find the new composite matrix
+						compositeModeling = multiplyMatrixWithMatrix(compositeModeling, rotationMatrix(rotation->angle, rotation->ux, rotation->uy, rotation->uz));
+						break;
+				}
+			}
+
+			// Now, to every vertex in the scene, apply the composite modeling transformation and store these transformed vertices inside the mesh
+			for (int j = 0; j < this->vertices.size(); j++) {
+
+				Vec3 *originalVertex = this->vertices[j];
+				Vec4 transformedVertex;
+
+				transformedVertex.x = originalVertex->x;
+				transformedVertex.y = originalVertex->y;
+				transformedVertex.z = originalVertex->z;
+				transformedVertex.t = 1.0;
+				transformedVertex.colorId = originalVertex->colorId;
+
+				// Multiply the composite modeling matrix with the vector with homogeneous coordinates
+				transformedVertex = multiplyMatrixWithVec4(compositeModeling, transformedVertex);
+
+				// Add the transformed vertex to the std::vector of the mesh
+				mesh->transformedVertices.push_back(transformedVertex);
+			}
 		}
-
-
-
 	}
- */
 }
+		// There are no modeling transformations specified for this mesh, simply deep-copy the original vertices in the scene

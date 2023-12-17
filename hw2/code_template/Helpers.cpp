@@ -164,3 +164,8 @@ Vec4 multiplyMatrixWithVec4(Matrix4 m, Vec4 v)
 
     return Vec4(values[0], values[1], values[2], values[3], v.colorId);
 }
+
+int lineEquationF(int x, int y, int xStart, int yStart, int xEnd, int yEnd)
+{
+    return x * (yStart - yEnd) + y * (xEnd - xStart) + (xStart * yEnd) - (yStart * xEnd);
+}

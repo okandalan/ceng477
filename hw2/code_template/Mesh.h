@@ -3,7 +3,8 @@
 #define WIREFRAME_MESH 0
 #define SOLID_MESH 1
 #include "Triangle.h"
-#include "Vec3.h"
+#include "Vec4.h"
+
 
 class Mesh
 {
@@ -14,7 +15,7 @@ public:
     std::vector<char> transformationTypes;
     std::vector<Triangle> triangles;
 
-    std::vector<Vec3> transformedVertices;
+    std::vector<Vec4> transformedVertices;
 
     Mesh();
     Mesh(int meshId, int type, int numberOfTransformations,

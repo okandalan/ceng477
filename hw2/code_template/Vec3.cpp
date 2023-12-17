@@ -49,6 +49,12 @@ double Vec3::getNthComponent(int n)
     }
 }
 
+Vec3 Vec3::operator-(const Vec3& other) const
+{
+    return Vec3(this->x - other.x, this->y - other.y, this->z - other.z);
+}
+
+
 std::ostream &operator<<(std::ostream &os, const Vec3 &v)
 {
     os << std::fixed << std::setprecision(6) << "[" << v.x << ", " << v.y << ", " << v.z << "]";
