@@ -33,7 +33,7 @@ int main(int argc, char *argv[])
 
             // Converts PPM image in given path to PNG file, by calling ImageMagick's 'convert' command.
             // Change/remove implementation if necessary.
-            scene->convertPPMToPNG(scene->cameras[i]->outputFilename);
+            //scene->convertPPMToPNG(scene->cameras[i]->outputFilename);
         }
 
         return 0;

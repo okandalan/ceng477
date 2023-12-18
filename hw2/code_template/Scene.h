@@ -33,6 +33,10 @@ public:
 	void writeImageToPPMFile(Camera *camera);
 	void convertPPMToPNG(std::string ppmFileName);
 	void forwardRenderingPipeline(Camera *camera);
+	void triangleRasterization(int x0, int y0, double z0, Color c0, int x1, int y1, double z1, Color c1, int x2, int y2, double z2, Color c2, Camera *c);
+	void lineRasterization(int x0, int y0, double z0, Color c0, int x1, int y1, double z1, Color c1, Camera* c);
+	void lineClipping(Line& l);
+
 };
 
 #endif

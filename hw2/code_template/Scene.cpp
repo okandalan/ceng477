@@ -6,12 +6,12 @@
 #include <string>
 #include <vector>
 #include <cmath>
+#include <iostream>
 
 #include "tinyxml2.h"
 #include "Triangle.h"
 #include "Helpers.h"
 #include "Scene.h"
-#include "Line.h"
 
 using namespace tinyxml2;
 using namespace std;
@@ -31,8 +31,8 @@ Matrix4 transposeMatrix4(Matrix4 m)
 {
 	Matrix4 m_transpose;
 
-	for (int i=0; i++; i < 4){
-		for (int j=0; j++; j < 4){
+	for (int i=0; i < 4; i++){
+		for (int j=0;  j < 4; j++){
 			m_transpose.values[j][i] = m.values[i][j];
 		}
 	}
@@ -42,7 +42,6 @@ Matrix4 transposeMatrix4(Matrix4 m)
 Matrix4 rotationMatrix(double angle, double ux, double uy, double uz)
 {
 	Vec3 v;
-
 	if (abs(ux) <= abs(uy) && abs(ux) <= abs(uz)) {
 		v = Vec3(0.0, -uz, uy);
 	}
@@ -54,7 +53,6 @@ Matrix4 rotationMatrix(double angle, double ux, double uy, double uz)
 	}
 
 	Vec3 w = crossProductVec3(Vec3(ux, uy, uz), v);
-
 	v = normalizeVec3(v);
 	w = normalizeVec3(w);
 
@@ -71,10 +69,10 @@ Matrix4 rotationMatrix(double angle, double ux, double uy, double uz)
 	m.values[2][2] = w.z;
 
 	Matrix4 rotation = getIdentityMatrix();
-	rotation.values[1][1] = cos(angle);
-	rotation.values[1][2] = -sin(angle);
-	rotation.values[2][1] = sin(angle);
-	rotation.values[2][2] = cos(angle);
+	rotation.values[1][1] = cos(angle * M_PI / 180.0);
+	rotation.values[1][2] = -sin(angle * M_PI / 180.0);
+	rotation.values[2][1] = sin(angle * M_PI / 180.0);
+	rotation.values[2][2] = cos(angle * M_PI / 180.0);
 	
 	return multiplyMatrixWithMatrix(transposeMatrix4(m), multiplyMatrixWithMatrix(rotation, m));
 }
@@ -192,12 +190,13 @@ Color roundColor(Color c)
 	return c; 
 }
 
-void lineRasterization(int x0, int y0, int z0, Color c0, int x1, int y1, int z1, Color c1, double ** depth_buffer,  Scene * s, Camera* c)
+void Scene::lineRasterization(int x0, int y0, double z0, Color c0, int x1, int y1, double z1, Color c1, Camera* c)
 {
 	int x_inc = 0;
 	int y_inc = 0;
 	int x_index = x0;
 	int y_index = y0;
+	double slope = double(y1 - y0) / (x1 - x0);
 	double depth = z0;
 	Color tmp_c = c0;
 	double d;
@@ -212,19 +211,19 @@ void lineRasterization(int x0, int y0, int z0, Color c0, int x1, int y1, int z1,
 	else
 		y_inc = -1;
 
-	if ((y0 == y1) || (abs((double(y1 - y0)) / (x1 - x0)) <= 1)) {
+	if ((y0 == y1) || (abs(slope) <= 1)) {
 		d = x_inc * (y0 - y1) + y_inc * 0.5 * (x1 - x0);
 		for (; x_index != x1 + x_inc; x_index += x_inc) {
 			alpha = double(x_index - x0) / (x1 - x0);
 			depth = (1 - alpha) * z0 + alpha * z1;
-			if (depth < depth_buffer[x_index][y_index] && x_index < c->horRes && y_index < c->verRes) {
-				tmp_c.r = (1 - alpha) * c0.r + alpha * c1.r; 
-				tmp_c.g = (1 - alpha) * c0.g + alpha * c1.g; 
-				tmp_c.b = (1 - alpha) * c0.b + alpha * c1.b;
-				s->assignColorToPixel(x_index, y_index, roundColor(tmp_c));
+			if (depth < this->depth[x_index][y_index] && x_index < c->horRes && y_index < c->verRes) {
+				tmp_c.r = (double) makeBetweenZeroAnd255((1 - alpha) * c0.r + alpha * c1.r); 
+				tmp_c.g = (double) makeBetweenZeroAnd255((1 - alpha) * c0.g + alpha * c1.g); 
+				tmp_c.b = (double) makeBetweenZeroAnd255((1 - alpha) * c0.b + alpha * c1.b);
+				this->assignColorToPixel(x_index, y_index, roundColor(tmp_c));
 			}
 
-			if (d < 0) {
+			if ((slope > 0 && d < 0) || (slope < 0 && d > 0)) {
 				y_index += y_inc;
 				d += x_inc * (y0 - y1) + y_inc * (x1 - x0);
 			}
@@ -234,19 +233,19 @@ void lineRasterization(int x0, int y0, int z0, Color c0, int x1, int y1, int z1,
 		}
 	}
 
-	if ((x0 == x1) || (abs((double(y1 - y0)) / (x1 - x0)) > 1)) {
+	if ((x0 == x1) || (abs(slope) > 1)) {
 		d = x_inc * 0.5 * (y0 - y1) + y_inc * (x1 - x0);
 		for (; y_index != y1 + y_inc; y_index += y_inc) {
 			alpha = double(y_index - y0) / (y1 - y0);
 			depth = (1 - alpha) * z0 + alpha * z1;
-			if (depth < depth_buffer[x_index][y_index] && x_index < c->horRes && y_index < c->verRes) {
+			if (depth < this->depth[x_index][y_index] && x_index < c->horRes && y_index < c->verRes) {
 				tmp_c.r = (1 - alpha) * c0.r + alpha * c1.r; 
 				tmp_c.g = (1 - alpha) * c0.g + alpha * c1.g; 
 				tmp_c.b = (1 - alpha) * c0.b + alpha * c1.b;
-				s->assignColorToPixel(x_index, y_index, roundColor(tmp_c));
+				this->assignColorToPixel(x_index, y_index, roundColor(tmp_c));
 			}
 
-			if (d < 0) {
+			if ((slope > 0 && d > 0) || (slope < 0 && d < 0)) {
 				x_index += x_inc;
 				d += x_inc * (y0 - y1) + y_inc * (x1 - x0);
 			}
@@ -258,67 +257,46 @@ void lineRasterization(int x0, int y0, int z0, Color c0, int x1, int y1, int z1,
 
 }
 
-void triangleRasterization(int x0, int y0, int z0, Color c0, int x1, int y1, int z1, Color c1, int x2, int y2, int z2, Color c2, double ** depth_buffer, Scene * s, Camera * c)
+void Scene::triangleRasterization(int x0, int y0, double z0, Color c0, int x1, int y1, double z1, Color c1, int x2, int y2, double z2, Color c2, Camera *c)
 {
 	int x_min, x_max, y_min, y_max;
-	if (x0 <= x1 && x0 <= x2) {
-		x_min = x0;
-	}
-	else if (x1 <= x0 && x1 <= x2) {
-		x_min = x1;
-	}
-	else {
-		x_min = x2;
-	}
-
-	if (x0 >= x1 && x0 >= x2) {
-		x_max = x0;
-	}
-	else if (x1 >= x0 && x1 >= x2) {
-		x_max = x1;
-	}
-	else {
-		x_max = x2;
-	}
 	
-	if (y0 <= y1 && y0 <= y2) {
-		y_min = y0;
-	}
-	else if (y1 <= y0 && y1 <= y2) {
-		y_min = y1;
-	}
-	else {
-		y_min = y2;
-	}
-
-	if (y0 >= y1 && y0 >= y2) {
-		y_max = y0;
-	}
-	else if (y1 >= y0 && y1 >= y2) {
-		y_max = y1;
-	}
-	else {
-		y_max = y2;
-	}
+	x_min = min(x0, min(x1, x2));
+	x_max = max(x0, max(x1, x2));
+	y_min = min(y0, min(y1, y2));
+	y_max = max(y0, max(y1, y2));
 
 	int f_0_1 = lineEquationF(x2, y2, x0, y0, x1, y1); 
-	int f_1_2 = lineEquationF(x0, y0, x1, y1, x2, y2); 
+	int f_1_2 = lineEquationF(x0, y0, x1, y1, x2, y2);
 	int f_2_0 = lineEquationF(x1, y1, x2, y2, x0, y0);
-	double alpha;
-	double beta;
-	double gama;
-	double depth;
-	for(int y = y_min; y <= y_max; y++) {
+	double alpha, beta, gama, depthCalc;
+
+	for (int y = y_min; y <= y_max; y++) {
 		for (int x = x_min; x <= x_max; x++) {
+			
 			alpha = double(lineEquationF(x, y, x1, y1, x2, y2)) / f_1_2;
 			beta = double(lineEquationF(x, y, x2, y2, x0, y0)) / f_2_0;
 			gama = double(lineEquationF(x, y, x0, y0, x1, y1)) / f_0_1;
-			depth = (z0 * alpha) + (z1 * beta) + (z2 * gama);
-			if (alpha >= 0 && beta >= 0 && gama >= 0 && depth < depth_buffer[x][y] && x < c->horRes && y < c->verRes) {
-				s->assignColorToPixel(x, y, roundColor((c0 * alpha) + (c1 * beta) + (c2 * gama)));
+			depthCalc = (z0 * alpha) + (z1 * beta) + (z2 * gama);
+
+			if (alpha >= 0 && beta >= 0 && gama >= 0) {
+				// If the fragment is at the front, color it
+				if (depthCalc <= this->depth[x][y]) {
+					
+					// Update the depth buffer
+					this->depth[x][y] = depthCalc;
+					
+					// Calculate the interpolated color
+					Color interpolatedColor;
+
+					interpolatedColor.r = (double) makeBetweenZeroAnd255(alpha * c0.r + beta * c1.r + gama * c2.r);
+					interpolatedColor.g = (double) makeBetweenZeroAnd255(alpha * c0.g + beta * c1.g + gama * c2.g);
+					interpolatedColor.b = (double) makeBetweenZeroAnd255(alpha * c0.b + beta * c1.b + gama * c2.b);
+
+					assignColorToPixel(x, y, interpolatedColor);
+				}
 			}
 		}
-
 	}
 
 }
@@ -363,7 +341,7 @@ bool visible(double den, double num, double& te, double& tl)
 	return true;
 }
 
-void lineClipping(Line& l, Scene * s)
+void Scene::lineClipping(Line& l)
 {
 	Vec4 initialV0 = l.v0;
 	Vec4 initialV1 = l.v1;
@@ -391,9 +369,9 @@ void lineClipping(Line& l, Scene * s)
 				l.v1.z = l.v0.z + (dz * tl);
 			}
 			if (te > 0) {
-				l.v0.x = l.v0.x + (dx * tl);
-				l.v0.y = l.v0.y + (dy * tl);
-				l.v0.z = l.v0.z + (dz * tl);
+				l.v0.x = l.v0.x + (dx * te);
+				l.v0.y = l.v0.y + (dy * te);
+				l.v0.z = l.v0.z + (dz * te);
 			}
 	}
 
@@ -402,8 +380,8 @@ void lineClipping(Line& l, Scene * s)
 	double distanceV0ToNewV0 = sqrt(pow(l.v0.x - initialV0.x, 2) + pow(l.v0.y - initialV0.y, 2) + pow(l.v0.z - initialV0.z, 2));;
 	double alpha0 = distanceV0ToNewV0 / distanceV0ToV1;
 	double alpha1 = distanceV0ToNewV1 / distanceV0ToV1;
-	Color *c0 = s->colorsOfVertices[l.v0.colorId - 1];
-	Color *c1 = s->colorsOfVertices[l.v1.colorId - 1];
+	Color *c0 = this->colorsOfVertices[l.v0.colorId - 1];
+	Color *c1 = this->colorsOfVertices[l.v1.colorId - 1];
 
 	l.colorV0.r = (1 - alpha0) * c0->r + alpha0 * c1->r;
 	l.colorV0.g = (1 - alpha0) * c0->g + alpha0 * c1->g;
@@ -745,6 +723,36 @@ void Scene::convertPPMToPNG(string ppmFileName)
 	system(command.c_str());
 }
 
+void processViewportVertex(Vec4& viewportVertex, Camera * camera)
+{
+	if (viewportVertex.x < 0) {
+		viewportVertex.x = 0.0;
+	}
+
+	else if (viewportVertex.x >= camera->horRes - 0.5) {
+		viewportVertex.x = camera->horRes - 1;
+	}
+
+	else {
+		// Round x coordinate to obtain 2D integer viewport pixel coordinates
+		viewportVertex.x = (double) round(viewportVertex.x);
+	}
+
+	if (viewportVertex.y < 0) {
+		viewportVertex.y = 0.0;
+	}
+
+	else if (viewportVertex.y >= camera->verRes - 0.5) {
+		viewportVertex.y = camera->verRes - 1;
+	}
+
+	else {
+		// Round y coordinate to obtain 2D integer viewport pixel coordinates
+		viewportVertex.y = (double) round(viewportVertex.y);
+	}
+
+}
+
 /*
 	Transformations, clipping, culling, rasterization are done here.
 */
@@ -772,40 +780,43 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 	// Traverse over all meshes to compute their own versions of vertices after applying modeling and viewing transformations
 	for (int i = 0; i < this->meshes.size(); i++) {
 
-		Mesh *mesh = this->meshes[i];
+		Mesh mesh = *(this->meshes[i]);
 
 		// Calculate the composite modeling transformation matrix for this specific mesh
-		if (mesh->numberOfTransformations > 0) {
+		if (mesh.numberOfTransformations > 0) {
 
 			Matrix4 compositeModeling = getIdentityMatrix();
 
 			// For each modeling transformation, multiply the previously obtained matrix from the right with the corresponding matrix of the transformation
-			for (int j = mesh->numberOfTransformations - 1; j >= 0; j--) {
+			for (int j = mesh.numberOfTransformations - 1; j >= 0; j--) {
 
-				int transformationId = mesh->transformationIds[j];
-				char transformationType = mesh->transformationTypes[j];
+				int transformationId = mesh.transformationIds[j];
+				char transformationType = mesh.transformationTypes[j];
 
 				switch (transformationType) {
-					case 't':
+					case 't': {
 						Translation *translation = this->translations[transformationId - 1];
 
 						// Multiply the previous composite matrix with the translation matrix in order to find the new composite matrix
 						compositeModeling = multiplyMatrixWithMatrix(compositeModeling, translationMatrix(translation->tx, translation->ty, translation->tz));
 						break;
-
-					case 's':
+					}
+						
+					case 's': {
 						Scaling *scaling = this->scalings[transformationId - 1];
 
 						// Multiply the previous composite matrix with the scaling matrix in order to find the new composite matrix
 						compositeModeling = multiplyMatrixWithMatrix(compositeModeling, createScaleMatrix(scaling->sx, scaling->sy, scaling->sz));
 						break;
+					}
 
-					case 'r':
+					case 'r': {
 						Rotation *rotation = this->rotations[transformationId - 1];
 
 						// Multiply the previous composite matrix with the rotation matrix in order to find the new composite matrix
 						compositeModeling = multiplyMatrixWithMatrix(compositeModeling, rotationMatrix(rotation->angle, rotation->ux, rotation->uy, rotation->uz));
 						break;
+					}
 				}
 			}
 
@@ -825,10 +836,8 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 				transformedVertex = multiplyMatrixWithVec4(compositeModeling, transformedVertex);
 
 				// Add the transformed vertex to the std::vector of the mesh
-				mesh->transformedVertices.push_back(transformedVertex);
+				mesh.transformedVertices.push_back(transformedVertex);
 			}
-
-
 		}
 
 		// There are no modeling transformations specified for this mesh, simply deep-copy the original vertices in the scene
@@ -847,50 +856,189 @@ void Scene::forwardRenderingPipeline(Camera *camera)
 				homogeneousVertex.colorId = originalVertex->colorId;
 
 				// Add the vertex with homogeneous coordinates into the std::vector of the mesh
-				mesh->transformedVertices.push_back(homogeneousVertex);
+				mesh.transformedVertices.push_back(homogeneousVertex);
 			}
 		}
 
 		// MODELING TRANSFORMATIONS ARE DONE, MOVING ONTO THE VIEWING TRANSFORMATIONS
 
 		// Apply camera transformation and projection transformation to each transformed vertex of the mesh
-		for (int j = 0; j < mesh->transformedVertices.size(); j++) {
+		for (int j = 0; j < mesh.transformedVertices.size(); j++) {
 
-			Vec4 viewTransformedVertex = multiplyMatrixWithVec4(viewingTransformMatrix, mesh->transformedVertices[j]);
+			Vec4 viewTransformedVertex = multiplyMatrixWithVec4(viewingTransformMatrix, mesh.transformedVertices[j]);
 
-			mesh->transformedVertices[j].x = viewTransformedVertex.x;
-			mesh->transformedVertices[j].y = viewTransformedVertex.y;
-			mesh->transformedVertices[j].z = viewTransformedVertex.z;
-			mesh->transformedVertices[j].t = viewTransformedVertex.t;
+			mesh.transformedVertices[j].x = viewTransformedVertex.x;
+			mesh.transformedVertices[j].y = viewTransformedVertex.y;
+			mesh.transformedVertices[j].z = viewTransformedVertex.z;
+			mesh.transformedVertices[j].t = viewTransformedVertex.t;
 		}
 
 		// VIEWING TRANSFORMATIONS ARE DONE, MOVING ONTO PRIMITIVE (LINE) ASSEMBLY
 
 		// type == 0 (wireframe mode), compute the edges from the given triangles and store them in a vector inside the mesh, for clipping purposes
-		if (!mesh->type) {
+		if (!mesh.type) {
 
 			// For each triangle of the mesh, add 3 constituent edges to the lines vector of the mesh
-			for (int j = 0; j < mesh->triangles.size(); j++) {
+			for (int j = 0; j < mesh.triangles.size(); j++) {
 
-				Triangle triangle = mesh->triangles[j];
-				Vec4 a = mesh->transformedVertices[triangle.vertexIds[0] - 1];
-				Vec4 b = mesh->transformedVertices[triangle.vertexIds[1] - 1];
-				Vec4 c = mesh->transformedVertices[triangle.vertexIds[2] - 1];
+				Triangle triangle = mesh.triangles[j];
+				Vec4 a = mesh.transformedVertices[triangle.vertexIds[0] - 1];
+				Vec4 b = mesh.transformedVertices[triangle.vertexIds[1] - 1];
+				Vec4 c = mesh.transformedVertices[triangle.vertexIds[2] - 1];
+
+
+				if (isBack(Vec3(a.x, a.y, a.z), Vec3(b.x, b.y, b.z), Vec3(c.x, c.y, c.z), camera->position)) {
+					// Set the willBeCulled field of the triangle to true
+					continue;
+				}
 
 				Line line1(a, b);
 				Line line2(b, c);
 				Line line3(c, a);
 
-				mesh->lines.push_back(line1);
-				mesh->lines.push_back(line2);
-				mesh->lines.push_back(line3);
+
+				line1.v0 = perspectiveDivide(line1.v0);
+				line1.v1 = perspectiveDivide(line1.v1);
+				line2.v0 = perspectiveDivide(line2.v0);
+				line2.v1 = perspectiveDivide(line2.v1);
+				line3.v0 = perspectiveDivide(line3.v0);
+				line3.v1 = perspectiveDivide(line3.v1);
+
+				lineClipping(line1);
+				lineClipping(line2);
+				lineClipping(line3);
+
+				Matrix4 viewportTransform = viewportMatrix(camera->horRes, camera->verRes);
+
+				// Transform the coordinates of the vertices that belong to the mesh to viewport coordinates
+
+				Vec4 viewportLine1Vertex0 = multiplyMatrixWithVec4(viewportTransform, line1.v0);
+				Vec4 viewportLine1Vertex1 = multiplyMatrixWithVec4(viewportTransform, line1.v1);
+				Vec4 viewportLine2Vertex0 = multiplyMatrixWithVec4(viewportTransform, line2.v0);
+				Vec4 viewportLine2Vertex1 = multiplyMatrixWithVec4(viewportTransform, line2.v1);
+				Vec4 viewportLine3Vertex0 = multiplyMatrixWithVec4(viewportTransform, line3.v0);
+				Vec4 viewportLine3Vertex1 = multiplyMatrixWithVec4(viewportTransform, line3.v1);
+				processViewportVertex(viewportLine1Vertex0, camera);
+				processViewportVertex(viewportLine1Vertex1, camera);
+				processViewportVertex(viewportLine2Vertex0, camera);
+				processViewportVertex(viewportLine2Vertex1, camera);
+				processViewportVertex(viewportLine3Vertex0, camera);
+				processViewportVertex(viewportLine3Vertex1, camera);
+
+				if (line1.visible){
+					lineRasterization(viewportLine1Vertex0.x, viewportLine1Vertex0.y, viewportLine1Vertex0.z, line1.colorV0,
+									  viewportLine1Vertex1.x, viewportLine1Vertex1.y, viewportLine1Vertex1.z, line1.colorV1,
+									  camera);
+				}
+				if (line2.visible){
+					lineRasterization(viewportLine2Vertex0.x, viewportLine2Vertex0.y, viewportLine2Vertex0.z, line2.colorV0,
+									  viewportLine2Vertex1.x, viewportLine2Vertex1.y, viewportLine2Vertex1.z, line2.colorV1,
+									  camera);
+				}
+				if (line3.visible){
+					lineRasterization(viewportLine3Vertex0.x, viewportLine3Vertex0.y, viewportLine3Vertex0.z, line3.colorV0,
+									  viewportLine3Vertex1.x, viewportLine3Vertex1.y, viewportLine3Vertex1.z, line3.colorV1,
+									  camera);
+				}
+
+					// This vector consists of floating point x,y,z, and w coordinates, where w = 1
 			}
+
+
 		}
 
 		// type == 1 (solid mode), DO NOT PERFORM CLIPPING
 		else {
 
+			// Perform perspective divide, as the last component of vertices may have values other than 1, due to perspective projection
+			for (int j = 0; j < mesh.transformedVertices.size(); j++) {
+				mesh.transformedVertices[j] = perspectiveDivide(mesh.transformedVertices[j]);
+			}
+
+			// Culling is enabled, perform back-face culling
+			if (this->cullingEnabled) {
+
+				// Traverse all triangles of the mesh and mark the back-facing ones as to-be-culled
+				for (int j = 0; j < mesh.triangles.size(); j++) {
+
+					Triangle triangle = mesh.triangles[j];
+					Vec4 a = mesh.transformedVertices[triangle.vertexIds[0] - 1];
+					Vec4 b = mesh.transformedVertices[triangle.vertexIds[1] - 1];
+					Vec4 c = mesh.transformedVertices[triangle.vertexIds[2] - 1];
+
+					if (isBack(Vec3(a.x, a.y, a.z), Vec3(b.x, b.y, b.z), Vec3(c.x, c.y, c.z), camera->position)) {
+						// Set the willBeCulled field of the triangle to true
+						mesh.triangles[j].willBeCulled = true;
+					}
+				}
+			}
+
+			// CULLING IS DONE (IF IT WAS ENABLED), CONTINUE WITH THE VIEWPORT TRANSFORMATION
+
+			// Note that in this implementation, viewport transformation matrix is 4x4, with the last row being [0 0 0 1]
+			Matrix4 viewportTransform = viewportMatrix(camera->horRes, camera->verRes);
+
+			// Transform the coordinates of the vertices that belong to the mesh to viewport coordinates
+			for (int j = 0; j < mesh.transformedVertices.size(); j++) {
+
+				// This vector consists of floating point x,y,z, and w coordinates, where w = 1
+				Vec4 viewportVertex = multiplyMatrixWithVec4(viewportTransform, mesh.transformedVertices[j]);
+
+				if (viewportVertex.x < 0) {
+					viewportVertex.x = 0.0;
+				}
+
+				else if (viewportVertex.x >= camera->horRes - 0.5) {
+					viewportVertex.x = camera->horRes - 1;
+				}
+
+				else {
+					// Round x coordinate to obtain 2D integer viewport pixel coordinates
+					viewportVertex.x = (double) round(viewportVertex.x);
+				}
+
+				if (viewportVertex.y < 0) {
+					viewportVertex.y = 0.0;
+				}
+
+				else if (viewportVertex.y >= camera->verRes - 0.5) {
+					viewportVertex.y = camera->verRes - 1;
+				}
+
+				else {
+					// Round y coordinate to obtain 2D integer viewport pixel coordinates
+					viewportVertex.y = (double) round(viewportVertex.y);
+				}
+
+				mesh.transformedVertices[j].x = viewportVertex.x;
+				mesh.transformedVertices[j].y = viewportVertex.y;
+				mesh.transformedVertices[j].z = viewportVertex.z;
+				mesh.transformedVertices[j].t = viewportVertex.t;
+			}
+
+			// VIEWPORT TRANSFORMATION IS DONE, CONTINUE WITH TRIANGLE RASTERIZATION
+
+			// Traverse all triangles of the mesh and rasterize fragments (if they are not culled)
+			for (int j = 0; j < mesh.triangles.size(); j++) {
+
+				Triangle triangle = mesh.triangles[j];
+
+				// If the triangle is not back-facing
+				if (!triangle.willBeCulled) {
+
+					Vec4 a = mesh.transformedVertices[triangle.vertexIds[0] - 1];
+					Vec4 b = mesh.transformedVertices[triangle.vertexIds[1] - 1];
+					Vec4 c = mesh.transformedVertices[triangle.vertexIds[2] - 1];
+
+					Color colorA = *(this->colorsOfVertices[a.colorId - 1]);
+					Color colorB = *(this->colorsOfVertices[b.colorId - 1]);
+					Color colorC = *(this->colorsOfVertices[c.colorId - 1]);
+
+					triangleRasterization((int) a.x, (int) a.y, a.z, colorA, (int) b.x, (int) b.y, b.z, colorB, (int) c.x, (int) c.y, c.z, colorC, camera);
+				}
+			}
+
 		}
+
 	}
 }
-		// There are no modeling transformations specified for this mesh, simply deep-copy the original vertices in the scene
